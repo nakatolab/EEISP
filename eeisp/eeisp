@@ -6,11 +6,12 @@ Copyright(c)  Ryuichiro Nakato <rnakato@iqb.u-tokyo.ac.jp>
 All rights reserved.
 '''
 
-import numpy as np
-import pandas as pd
 import sys
 import os
 import time
+import numpy as np
+import pandas as pd
+import matplotlib.pyplot as plt
 from scipy.stats import binom
 import argparse
 import multiprocessing as mp
@@ -30,11 +31,6 @@ def calcCDI_eachrow(i, ProbArray, CountArray, ngene, ncell):
     del CountArray
     return array
 
-'''
-各遺伝子ペアで(gi,gj)=(0,1)となるサンプル数がCount_excl[j][i]回以上になるp値(prob1)と排他性スコアの計算
-各遺伝子ペアで(gi,gj)=(1,0)となるサンプル数がCount_excl[i][j]回以上になるp値(prob2)と排他性スコアの計算
-便宜的に2つのp値の平均を計算する
-'''
 def calcEEI_eachrow(i, ProbArray_i, CountArray_i, ProbArray_T_i, CountArray_T_i, ngene, ncell):
     x1 = CountArray_T_i[i + 1:]
     p1 = ProbArray_i[i + 1:]
@@ -78,31 +74,18 @@ def generate_CDImatrix(A, args):
     is_nonzeroMat = A > 0
     p_nonzero = np.sum(is_nonzeroMat, axis=1) / ncell
 
-    if(args.gpu):
-        print("using GPU for CDI calculation.")
-        import cupy as cp
-        p_nonzero = cp.asarray(p_nonzero)
-        is_nonzeroMat = cp.asarray(is_nonzeroMat)
-        Prob_joint = cp.array(p_nonzero * p_nonzero[:, cp.newaxis], dtype='float32')
-        Count_joint = cp.zeros((ngene, ngene), dtype='uint16')
-        for i in range(ngene):
-            Count_joint[i] = cp.sum(is_nonzeroMat[i] * is_nonzeroMat, axis=1)
+    print("Calculating CDI...")
+    Prob_joint = np.array(p_nonzero * p_nonzero[:, np.newaxis], dtype='float32')
+    Count_joint = np.zeros((ngene,ngene), dtype='uint16')
 
-        Prob_joint = cp.asnumpy(Prob_joint)
-        Count_joint = cp.asnumpy(Count_joint)
-    else:
-        print("using CPU for CDI calculation.")
-        Prob_joint = np.array(p_nonzero * p_nonzero[:, np.newaxis], dtype='float32')
-        Count_joint = np.zeros((ngene,ngene), dtype='uint16')
+    p = mp.get_context('spawn').Pool(args.threads)
+    func_args = []
 
-        p = mp.get_context('spawn').Pool(args.threads)
-        func_args = []
+    for i in range(ngene):
+        func_args.append((count_sum_nonzeroMat, i, is_nonzeroMat))
 
-        for i in range(ngene):
-            func_args.append((count_sum_nonzeroMat, i, is_nonzeroMat))
-
-        Count_joint = p.map(argwrapper, func_args)
-        p.close()
+    Count_joint = p.map(argwrapper, func_args)
+    p.close()
 
     CDI = genMatrix_MultiProcess(Prob_joint, Count_joint, "CDI", ngene, ncell, ncore=args.threads)
 
@@ -119,35 +102,19 @@ def generate_EEImatrix(A, args):
     p_nonzero = np.sum(is_nonzeroMat, axis=1) / ncell
     p_zero = np.sum(A == 0, axis=1) / ncell
 
-    if(args.gpu):
-        print("using GPU for EEI calculation.")
-        import cupy as cp
-        p_nonzero = cp.asarray(p_nonzero)
-        p_zero = cp.asarray(p_zero)
-        is_nonzeroMat = cp.asarray(is_nonzeroMat)
-        notA = cp.asarray(np.logical_not(A))
+    print("Calculating EEI...")
+    Prob_joint = np.array(p_nonzero * p_zero[:, np.newaxis], dtype='float32')
+    notA = np.logical_not(A)
+    Count_excl = np.zeros((ngene,ngene), dtype='uint16')
 
-        Prob_joint = cp.array(p_nonzero * p_zero[:, np.newaxis], dtype='float32')
-        Count_excl = cp.zeros((ngene, ngene), dtype='uint16')
-        for i in range(ngene):
-            Count_excl[i] = cp.sum(is_nonzeroMat[i] * notA, axis=1)
+    p = mp.get_context('spawn').Pool(args.threads)
+    func_args = []
 
-        Prob_joint = cp.asnumpy(Prob_joint)
-        Count_excl = cp.asnumpy(Count_excl)
-    else:
-        print("using CPU for EEI calculation.")
-        Prob_joint = np.array(p_nonzero * p_zero[:, np.newaxis], dtype='float32')
-        notA = np.logical_not(A)
-        Count_excl = np.zeros((ngene,ngene), dtype='uint16')
+    for i in range(ngene):
+        func_args.append((count_sum_nonzeroMatnotA, i, is_nonzeroMat, notA))
 
-        p = mp.get_context('spawn').Pool(args.threads)
-        func_args = []
-
-        for i in range(ngene):
-            func_args.append((count_sum_nonzeroMatnotA, i, is_nonzeroMat, notA))
-
-        Count_excl = np.array(p.map(argwrapper, func_args), dtype='uint16')
-        p.close()
+    Count_excl = np.array(p.map(argwrapper, func_args), dtype='uint16')
+    p.close()
 
     del notA
     EEI = genMatrix_MultiProcess(Prob_joint, Count_excl, "EEI", ngene, ncell, ncore=args.threads)
@@ -166,36 +133,35 @@ def calc_degree(Matrix, thre, ngene, filename, output, genenames):
     df = df.reindex(columns=["i", "j", "gene_i", "gene_j", "val"])
     df = df.sort_values(["val", "i"], ascending=[False, True])
 
+    # Create a histogram
+    plt.figure(figsize=(10, 6))
+    plt.hist(df["val"], bins=50, color='blue', alpha=0.7, edgecolor='black')
+    plt.title('Distribution of ' + output)
+    plt.xlabel('Value')
+    plt.ylabel('Frequency')
+    plt.yscale('log')
+    plt.grid(True)
+    plt.savefig(output + "_" + filename + ".pdf")
+
     data_file = output + "_" + filename + ".txt"
     print ("output degree data in " + data_file)
     print ("number of gene pairs over threshold (>" + str(thre) + "): " + str(df.shape[0]))
     df.to_csv(data_file, sep="\t", header=False, index=False)
     return degree
 
-
 def calc_degree_dist(degree, filename, args):
     max_value = max(degree)
     min_value = min(degree)
     value_range = max_value - min_value
-    print("max degree:%.3F min degree:%.3F value_width=%.3F" % (max_value, min_value, value_range))
+    print(f"max degree:{max_value:.3f} min degree:{min_value:.3f} value_width={value_range:.3f}")
 
-    freq = []
-    for a in range(min_value + 1, max_value + 1):
-        fnum = degree.count(a)
-        if fnum > 0:
-            freq.append([a, fnum])
+    freq = [[a, degree.count(a)] for a in range(min_value + 1, max_value + 1) if degree.count(a) > 0]
 
     df = pd.DataFrame(freq, columns=["Degree", "The number of genes"])
+    log_df = np.log(df).rename(columns={"Degree": "Log_Degree", "The number of genes": "Log_The number of genes"})
 
-    log_df = np.log(df)
-    log_df = log_df.rename(
-        columns={
-            "Degree": "Log_Degree",
-            "The number of genes": "Log_The number of genes",
-        }
-    )
     merge = pd.concat([log_df, df], axis=1)
-    merge.to_csv(args.output + "_" + filename + "_degree_distribution.tsv", sep="\t")
+    merge.to_csv(f"{args.output}_{filename}_degree_distribution.tsv", sep="\t")
 
 def get_nonzero_matrix(input_data):
     A = np.array(input_data)
@@ -208,6 +174,7 @@ def get_nonzero_matrix(input_data):
     del df
     return A, genenames
 
+
 def main():
     parser = argparse.ArgumentParser(prog='eeisp')
     parser.add_argument("matrix", help="Input matrix", type=str)
@@ -215,11 +182,10 @@ def main():
     parser.add_argument("--threCDI", help="Threshold for CDI (default: 10.0)", type=float, default=10)
     parser.add_argument("--threEEI", help="Threshold for EEI (default: 5.0)", type=float, default=5)
     parser.add_argument("--tsv", help="Specify when the input file is tab-delimited (.tsv)", action="store_true")
-    parser.add_argument("--gpu", help="GPU mode", action="store_true")
     parser.add_argument("--CDIonly", help="Calculate CDI only", action="store_true")
     parser.add_argument("--EEIonly", help="Calculate EEI only", action="store_true")
     parser.add_argument("-p", "--threads", help="number of threads (default: 2)", type=int, default=2)
-    parser.add_argument("-v", "--version", action='version', version='%(prog)s 0.5.0')
+    parser.add_argument("-v", "--version", action='version', version='%(prog)s 0.6.0')
 
     args = parser.parse_args()
     print(args)

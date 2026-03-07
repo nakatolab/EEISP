@@ -1,0 +1,45 @@
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+'''
+EEISP: identify gene pairs that are codependent and mutually exclusive from single-cell RNA-seq data.
+Copyright(c)  Ryuichiro Nakato <rnakato@iqb.u-tokyo.ac.jp>
+All rights reserved.
+'''
+
+import sys
+import os
+import numpy as np
+import pandas as pd
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+import seaborn as sns
+import argparse
+
+def plotheatmap(file_path, output):
+    df = pd.read_csv(file_path, sep='\t')
+    df.columns = ['Row_Index', 'Col_Index', 'Row_Label', 'Col_Label', 'Value']
+    print(df.head())
+
+    n_genes = max(max(df['Row_Index']), max(df['Col_Index'])) + 1
+    matrix = np.zeros((n_genes, n_genes))
+
+    matrix[df['Row_Index'], df['Col_Index']] = df['Value']
+    matrix[df['Col_Index'], df['Row_Index']] = df['Value']
+
+    plt.figure(figsize=(12, 10))
+    sns.heatmap(matrix, cmap="Blues")
+    plt.savefig(output)
+
+def main():
+    parser = argparse.ArgumentParser(prog='eeisp')
+    parser.add_argument("input", help="Score_data (*_[CDI|EEI]_score_data_*.txt)", type=str)
+    parser.add_argument("output", help="Output file name", type=str)
+
+    args = parser.parse_args()
+#    print(args)
+    plotheatmap(args.input, args.output)
+
+
+if __name__ == "__main__":
+    main()

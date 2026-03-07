@@ -1,22 +1,17 @@
 # EEISP
 
-EEISP identifies gene pairs that are codependent and mutually exclusive from single-cell RNA-seq data. 
-       
-## Installation
+EEISP identifies gene pairs that are codependent and mutually exclusive from single-cell RNA-seq data.
 
-    pip3 install eeisp
+## 0. Changelog
 
-###  (Optional) Dependencies for GPU
-EEISP requires [cupy](https://cupy.dev/) when using GPU computation `--gpu`. Use pip to install cupy like this (see [the manual](https://docs.cupy.dev/en/stable/install.html) for more detail).
+See [Changelog](https://github.com/nakatolab/EEISP/blob/master/README.md)
 
-    # For CUDA 9.2
-    pip3 install cupy-cuda92
-    # For CUDA 10.1
-    pip3 install cupy-cuda101
+## 1. Installation
 
-If you do not use `--gpu`, you do not need to install cupy.
+    pip3 install -U eeisp
 
-## Usage
+## 2. Usage
+
 EEISP takes a read count matrix as an input, in which rows and columns represent genes and cells, respectively. A gzipped file (.gz) is also acceptable.
 
    0. (Optional) Convert CellRanger output to an input matrix (require R and [Seurat](https://satijalab.org/seurat/) library)
@@ -42,7 +37,7 @@ EEISP takes a read count matrix as an input, in which rows and columns represent
            --gpu                 GPU mode
            -p THREADS, --threads THREADS  number of threads (default: 2)
            -v, --version         show program's version number and exit
-       ```  
+       ```
    2. `eeisp_add_genename_from_geneid` add Gene Names (Symbols) to the output files of `eeisp`.
         ```
          usage: eeisp_add_genename_from_geneid [-h] [--i_id I_ID] [--i_name I_NAME] input output genelist
@@ -57,8 +52,10 @@ EEISP takes a read count matrix as an input, in which rows and columns represent
            --i_id I_ID      column number of gene id (default: 0)
            --i_name I_NAME  column number of gene name (default: 1)
        ```
-## Tutorial
-The sample data is included in `sample` directory. 
+
+## 3. Tutorial
+
+The sample data is included in `sample` directory.
    * `data.txt`: the input matrix of scRNA-seq data.
    * `genelidlist.txt`: the gene list for `eeisp_add_genename_from_geneid`.
 
@@ -69,17 +66,17 @@ This command outputs gene pair lists that have CDI>0.5 or EEI>0.5. `-p 8` means 
 Supply `--gpu` option to GPU computation (require [cupy](https://www.preferred.jp/en/projects/cupy/)):
 
     eeisp data.txt Sample --threCDI 0.5 --threEEI 0.5 -p 8 --gpu
-    
+
 (Note: Since GPU computation covers a part of eeisp, it is better to use multiple CPUs even in `--gpu` mode for the fast computation.)
 
 Output files are:
 ```
-   Sample_CDI_score_data_thre0.5.txt            # A list of gene pairs with CDI score.  
-   Sample_CDI_degree_distribution_thre0.5.csv   # A table of the number of CDI degree and genes.  
-   Sample_EEI_score_data_thre0.5.txt            # A list of gene pairs with EEI scores.  
+   Sample_CDI_score_data_thre0.5.txt            # A list of gene pairs with CDI score.
+   Sample_CDI_degree_distribution_thre0.5.csv   # A table of the number of CDI degree and genes.
+   Sample_EEI_score_data_thre0.5.txt            # A list of gene pairs with EEI scores.
    Sample_EEI_degree_distribution_thre0.5.csv   # A table of the number of EEI degree and genes.
 ```
-The output files might include gene ids only. 
+The output files might include gene ids only.
 
 ```
    $ head Sample_CDI_score_data_thre0.5.txt
@@ -116,5 +113,6 @@ The output files include gene names.
    4       6       ESG100005       ESG000007       RP11-34P13.8    RP11-34P13.9    0.5258703930217091
 ```
 
-## Reference
+## 4. Reference
+
 Nakajima N., Hayashi T., Fujiki K., Shirahige K., Akiyama T., Akutsu T. and Nakato R., [Codependency and mutual exclusivity for gene community detection from sparse single-cell transcriptome data](https://academic.oup.com/nar/advance-article/doi/10.1093/nar/gkab601/6324613), *Nucleic Acids Research*, 2021.

@@ -1,0 +1,44 @@
+#! /usr/bin/env python
+# -*- coding: utf-8 -*-
+
+import numpy as np
+import networkx as nx
+import argparse
+from collections import defaultdict
+from eeisp.LouvainSigned import LouvainSigned
+from eeisp.network import load_graph_from_file
+
+ITER_LIMIT_PER_LOCALMOVE = -1
+MIN = 0.0000001
+
+def main():
+    parser = argparse.ArgumentParser(prog='eeispcommunity')
+    parser.add_argument("CDI_score_data", help="CDI_score_data", type=str)
+    parser.add_argument("EEI_score_data", help="Output EEI_score_data", type=str)
+    parser.add_argument("--thre_CDI", help="Threshold of CDI (default: 10)", type=int, default=10)
+    parser.add_argument("--thre_EEI", help="Threshold of EEI (default: 5)", type=int, default=5)
+    parser.add_argument("--alpha", help="alpha parameter (from 0 to 1, default: 0.5)", type=float, default=0.5)
+    parser.add_argument("--resolution", help="resolution for louvain (default: 1.0)", type=float, default=1.)
+    parser.add_argument("--seed", help="seed for LouvainSigned", type=int)
+    parser.add_argument("-v", "--version", action='version', version='%(prog)s 0.6.0')
+
+    args = parser.parse_args()
+    print(args)
+
+    alpha = args.alpha
+    seed = args.seed
+    resolution = args.resolution
+
+    G_positive = load_graph_from_file(args.CDI_score_data, args.thre_CDI)
+    G_negative = load_graph_from_file(args.EEI_score_data, args.thre_EEI)
+
+    print(f"G_positive: Nodes={G_positive.number_of_nodes()}, Edges={G_positive.number_of_edges()}")
+    print(f"G_negative: Nodes={G_negative.number_of_nodes()}, Edges={G_negative.number_of_edges()}")
+    print(f"G: Nodes={nx.compose(G_positive, G_negative).number_of_nodes()}, Edges={nx.compose(G_positive, G_negative).number_of_edges()}")
+
+    l = LouvainSigned(G_positive, G_negative)
+    partition = l.best_partition(alpha=alpha, resolution=resolution, seed=seed)
+    print(f"partition: {partition}")
+
+if __name__ == "__main__":
+    main()
